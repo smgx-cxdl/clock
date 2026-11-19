@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f5f1">
+<title>记事本</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#222;--mute:#8a8a84;--line:#e6e4dc;--acc:#2f6f5e}
+@media(prefers-color-scheme:dark){:root{--bg:#161615;--card:#212120;--ink:#e8e6df;--mute:#8d8b83;--line:#33322f;--acc:#6fbfa8}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:12px 14px calc(40px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;gap:8px;padding:6px 0 10px}
+header h1{font-size:19px;margin:0;flex:1}
+#stat{font-size:12px;color:var(--mute)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+textarea,input.f{width:100%;border:0;outline:0;resize:vertical;background:transparent;color:var(--ink);font:inherit}
+textarea{min-height:84px}
+input.f{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:4px 0 10px}
+label{font-size:13px;color:var(--mute)}
+.row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.sp{flex:1}
+input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;outline:0}
+.note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.note.pin{border-color:var(--acc)}
+.txt{white-space:pre-wrap;word-break:break-word}
+.txt a{color:var(--acc)}
+.imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.imgs img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);min-height:40px;min-width:40px;background:var(--bg)}
+.meta{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
+.meta button{padding:2px 8px;font-size:12px}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap}
+.thumbs span{font-size:12px;background:var(--bg);border-radius:6px;padding:2px 8px}
+.empty{text-align:center;color:var(--mute);padding:40px 0}
+.help{font-size:13px;color:var(--mute);line-height:1.7;margin:0 0 12px}
+.help b{color:var(--ink)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📒 记事本</h1>
+    <span id="stat"></span>
+    <button id="refresh">刷新</button>
+    <button id="gear">设置</button>
+  </header>
+
+  <!-- 设置面板 -->
+  <div class="box hide" id="setup">
+    <p class="help">
+      笔记存在你自己的 GitHub <b>私有仓库</b>里，每台设备首次使用填一次即可。<br>
+      1. 在 GitHub 新建一个<b>私有（Private）</b>仓库，比如叫 <b>my-notes</b>，勾选“Add a README”。<br>
+      2. 头像 → Settings → Developer settings → Fine-grained tokens → 新建：只选这个仓库，权限 <b>Contents: Read and write</b>。<br>
+      3. 把下面三项填好。Token 只保存在这台设备的浏览器里。
+    </p>
+    <label>GitHub 用户名</label><input class="f" id="c_owner" autocapitalize="off" autocomplete="off">
+    <label>仓库名</label><input class="f" id="c_repo" autocapitalize="off" autocomplete="off" placeholder="my-notes">
+    <label>Token</label><input class="f" id="c_token" type="password" autocomplete="off">
+    <label>分支</label><input class="f" id="c_branch" autocapitalize="off" autocomplete="off" placeholder="main">
+    <div class="row"><button id="c_clear">清除本机数据</button><span class="sp"></span><button id="c_cancel">取消</button><button class="pri" id="c_save">保存并连接</button></div>
+  </div>
+
+  <div id="main">
+    <div class="box">
+      <textarea id="inp" placeholder="记点什么…（可粘贴图片，Ctrl+Enter 保存）"></textarea>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="row">
+        <button id="attach">🖼 图片</button>
+        <input type="file" id="file" accept="image/*" multiple hidden>
+        <span class="sp"></span>
+        <button class="pri" id="add">保存</button>
+      </div>
+    </div>
+    <input class="search" id="q" placeholder="搜索…">
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const jget=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
+let cfg=jget('gh.cfg',null);
+let notes=jget('gh.notes',{});
+let pending=[];
+let editing=null;
+const persist=()=>localStorage.setItem('gh.notes',JSON.stringify(notes));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const status=t=>$('#stat').textContent=t;
+
+/* ---------- base64 ---------- */
+function bufB64(buf){
+  const u=new Uint8Array(buf);let s='';
+  for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));
+  return btoa(s);
+}
+const strB64=s=>bufB64(new TextEncoder().encode(s));
+const b64Str=b=>{const bin=atob(b.replace(/\s/g,''));const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new TextDecoder().decode(u)};
+
+/* ---------- GitHub API ---------- */
+function gh(path,opt={}){
+  const url=`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}`;
+  return fetch(url,{
+    method:opt.method||'GET',cache:'no-store',
+    headers:{'Authorization':'Bearer '+cfg.token,'Accept':opt.accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},
+    body:opt.body?JSON.stringify(opt.body):undefined
+  });
+}
+const ref=()=>'ref='+encodeURIComponent(cfg.branch||'main')+'&t='+Date.now();
+
+async function pull(){
+  const r=await gh('notes.json?'+ref());
+  if(r.status===404)return{notes:{},sha:null};
+  if(r.status===401||r.status===403)throw new Error('Token 无效或没有权限');
+  if(!r.ok)throw new Error('读取失败 '+r.status);
+  const j=await r.json();
+  let text='{}';
+  if(j.content)text=b64Str(j.content);
+  else if(j.size>0){
+    const r2=await gh('notes.json?'+ref(),{accept:'application/vnd.github.raw+json'});
+    text=await r2.text();
+  }
+  return{notes:JSON.parse(text||'{}'),sha:j.sha};
+}
+async function put(data,sha){
+  const body={message:'notes '+new Date().toISOString(),content:strB64(JSON.stringify(data)),branch:cfg.branch||'main'};
+  if(sha)body.sha=sha;
+  const r=await gh('notes.json',{method:'PUT',body});
+  if(r.status===409||r.status===422)return'conflict';
+  if(!r.ok)throw new Error('保存失败 '+r.status);
+  return'ok';
+}
+function merge(remote,local){
+  const out={...remote};
+  for(const id in local){const l=local[id];if(!out[id]||l.updated>out[id].updated)out[id]=l}
+  return out;
+}
+
+/* ---------- 同步（手动 + 每次修改后） ---------- */
+let busy=false,again=false;
+async function syncNow(){
+  if(!cfg)return;
+  if(busy){again=true;return}
+  busy=true;status('同步中…');
+  try{
+    for(let i=0;i<3;i++){
+      const{notes:remote,sha}=await pull();
+      const merged=merge(remote,notes);
+      const needPush=Object.values(merged).some(n=>!remote[n.id]||remote[n.id].updated<n.updated);
+      notes=merged;persist();render();
+      if(!needPush)break;
+      if(await put(merged,sha)==='ok')break;
+    }
+    status('已同步 '+new Date().toLocaleTimeString().slice(0,5));
+  }catch(e){status('同步失败：'+(e.message||'网络错误')+'（已存本机）')}
+  busy=false;
+  if(again){again=false;syncNow()}
+}
+function touch(n){n.updated=Date.now();notes[n.id]=n;persist();render();syncNow()}
+$('#refresh').onclick=syncNow;
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow()});
+
+/* ---------- 图片：压缩后存进仓库 img/ ---------- */
+const blobs=new Map(); // path -> objectURL
+function compress(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file),im=new Image();
+    im.onload=()=>{
+      const M=1600,k=Math.min(1,M/Math.max(im.width,im.height));
+      const c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b=>b?res(b):rej(),'image/jpeg',0.82);
+    };
+    im.onerror=()=>rej();im.src=url;
+  });
+}
+async function addImages(files){
+  if(!cfg){alert('请先在“设置”里连接 GitHub');return}
+  for(const f of files){
+    try{
+      status('上传图片…');
+      const blob=await compress(f);
+      const path='img/'+uid()+'.jpg';
+      const r=await gh(path,{method:'PUT',body:{message:'img',content:bufB64(await blob.arrayBuffer()),branch:cfg.branch||'main'}});
+      if(!r.ok)throw 0;
+      blobs.set(path,URL.createObjectURL(blob));
+      pending.push({file:path,name:f.name||'image'});
+    }catch(e){alert('图片上传失败：'+(f.name||'图片'))}
+  }
+  status('');renderThumbs();
+}
+async function imgUrl(path){
+  if(blobs.has(path))return blobs.get(path);
+  const r=await gh(path+'?'+ref(),{accept:'application/vnd.github.raw+json'});
+  if(!r.ok)throw 0;
+  const u=URL.createObjectURL(await r.blob());blobs.set(path,u);return u;
+}
+function renderThumbs(){
+  $('#thumbs').innerHTML='';
+  pending.forEach((a,i)=>{const s=document.createElement('span');s.textContent='🖼 '+a.name+' ✕';s.onclick=()=>{pending.splice(i,1);renderThumbs()};$('#thumbs').append(s)});
+}
+$('#attach').onclick=()=>$('#file').click();
+$('#file').onchange=e=>{addImages([...e.target.files]);e.target.value=''};
+$('#inp').addEventListener('paste',e=>{
+  const fs=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/'));
+  if(fs.length){e.preventDefault();addImages(fs)}
+});
+$('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))add()});
+
+/* ---------- 增删改 ---------- */
+function add(){
+  const text=$('#inp').value.trim();
+  if(!text&&!pending.length)return;
+  touch({id:uid(),text,files:pending,pinned:false,deleted:false,created:Date.now()});
+  $('#inp').value='';pending=[];renderThumbs();
+}
+$('#add').onclick=add;
+$('#q').oninput=render;
+
+/* ---------- 渲染 ---------- */
+const fmt=t=>{const d=new Date(t);return (d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+function linkify(el,text){
+  const re=/(https?:\/\/[^\s<>"]+)/g;let last=0,m;
+  while((m=re.exec(text))){
+    el.append(text.slice(last,m.index));
+    const a=document.createElement('a');a.href=m[1];a.textContent=m[1];a.target='_blank';a.rel='noopener';el.append(a);
+    last=m.index+m[1].length;
+  }
+  el.append(text.slice(last));
+}
+function btn(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
+
+function render(){
+  const q=$('#q').value.trim().toLowerCase();
+  const list=Object.values(notes).filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
+    .sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
+  const box=$('#list');box.innerHTML='';
+  if(!list.length){box.innerHTML='<div class="empty">'+(q?'没有找到':'还没有记录')+'</div>';return}
+  for(const n of list){
+    const c=document.createElement('div');c.className='note'+(n.pinned?' pin':'');
+    if(editing===n.id){
+      const ta=document.createElement('textarea');ta.value=n.text||'';ta.style.minHeight='100px';
+      const row=document.createElement('div');row.className='row';
+      row.append(btn('取消',()=>{editing=null;render()}),
+        Object.assign(btn('保存',()=>{editing=null;n.text=ta.value;touch(n)}),{className:'pri'}));
+      c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
+    }
+    const t=document.createElement('div');t.className='txt';linkify(t,n.text||'');c.append(t);
+    if(n.files?.length){
+      const g=document.createElement('div');g.className='imgs';
+      for(const f of n.files){
+        const im=document.createElement('img');im.loading='lazy';g.append(im);
+        imgUrl(f.file).then(u=>{im.src=u;im.onclick=()=>window.open(u)}).catch(()=>{im.alt='图片加载失败'});
+      }
+      c.append(g);
+    }
+    const m=document.createElement('div');m.className='meta';
+    const tm=document.createElement('span');tm.textContent=(n.pinned?'📌 ':'')+fmt(n.created);
+    const sp=document.createElement('span');sp.style.flex='1';
+    m.append(tm,sp,
+      btn('复制',()=>navigator.clipboard?.writeText(n.text||'')),
+      btn(n.pinned?'取消置顶':'置顶',()=>{n.pinned=!n.pinned;touch(n)}),
+      btn('编辑',()=>{editing=n.id;render()}),
+      btn('删除',()=>{if(confirm('删除这条？')){n.deleted=true;touch(n)}}));
+    c.append(m);box.append(c);
+  }
+}
+
+/* ---------- 设置 ---------- */
+function showSetup(on){
+  $('#setup').classList.toggle('hide',!on);
+  $('#main').classList.toggle('hide',on);
+  if(on){
+    $('#c_owner').value=cfg?.owner||'';$('#c_repo').value=cfg?.repo||'';
+    $('#c_token').value=cfg?.token||'';$('#c_branch').value=cfg?.branch||'main';
+  }
+}
+$('#gear').onclick=()=>showSetup(true);
+$('#c_cancel').onclick=()=>showSetup(!cfg);
+$('#c_clear').onclick=()=>{
+  if(confirm('清除本机保存的设置和笔记缓存？（仓库里的笔记不受影响）')){
+    localStorage.removeItem('gh.cfg');localStorage.removeItem('gh.notes');cfg=null;notes={};render();showSetup(true);
+  }
+};
+$('#c_save').onclick=async()=>{
+  const c={owner:$('#c_owner').value.trim(),repo:$('#c_repo').value.trim(),token:$('#c_token').value.trim(),branch:$('#c_branch').value.trim()||'main'};
+  if(!c.owner||!c.repo||!c.token){alert('请填完整');return}
+  const old=cfg;cfg=c;
+  try{await pull()}catch(e){cfg=old;alert('连接失败：'+(e.message||'网络错误')+'\n请检查用户名、仓库名、Token 权限；国内网络不稳定时可重试。');return}
+  localStorage.setItem('gh.cfg',JSON.stringify(c));
+  showSetup(false);syncNow();
+};
+
+render();
+if(cfg)syncNow();else showSetup(true);
+</script>
+</body>
+</html>
