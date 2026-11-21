@@ -32,6 +32,11 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 .imgs img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);min-height:40px;min-width:40px;background:var(--bg)}
 .meta{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
 .meta button{padding:2px 8px;font-size:12px}
+.pic{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
+.pic button{font-size:12px;padding:2px 8px}
+.lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
+.lb img{max-width:100%;max-height:75vh;border-radius:6px}
+.lb div{color:#bbb;font-size:12px}
 .thumbs{display:flex;gap:6px;flex-wrap:wrap}
 .thumbs span{font-size:12px;background:var(--bg);border-radius:6px;padding:2px 8px}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
@@ -199,6 +204,20 @@ async function imgUrl(path){
   if(!r.ok)throw 0;
   const u=URL.createObjectURL(await r.blob());blobs.set(path,u);return u;
 }
+async function savePic(f){
+  try{
+    const u=await imgUrl(f.file);
+    const a=document.createElement('a');a.href=u;a.download=f.file.split('/').pop();
+    document.body.append(a);a.click();a.remove();
+  }catch(e){alert('保存失败，请稍后再试')}
+}
+function openBox(u,f){
+  const o=document.createElement('div');o.className='lb';
+  const im=document.createElement('img');im.src=u;
+  const tip=document.createElement('div');tip.textContent='长按图片也可保存 · 点空白处关闭';
+  const b=btn('💾 保存到手机',e=>{e.stopPropagation();savePic(f)});
+  o.append(im,b,tip);o.onclick=()=>o.remove();document.body.append(o);
+}
 function renderThumbs(){
   $('#thumbs').innerHTML='';
   pending.forEach((a,i)=>{const s=document.createElement('span');s.textContent='🖼 '+a.name+' ✕';s.onclick=()=>{pending.splice(i,1);renderThumbs()};$('#thumbs').append(s)});
@@ -253,8 +272,10 @@ function render(){
     if(n.files?.length){
       const g=document.createElement('div');g.className='imgs';
       for(const f of n.files){
-        const im=document.createElement('img');im.loading='lazy';g.append(im);
-        imgUrl(f.file).then(u=>{im.src=u;im.onclick=()=>window.open(u)}).catch(()=>{im.alt='图片加载失败'});
+        const w=document.createElement('div');w.className='pic';
+        const im=document.createElement('img');im.loading='lazy';
+        w.append(im,btn('💾 保存到手机',()=>savePic(f)));g.append(w);
+        imgUrl(f.file).then(u=>{im.src=u;im.onclick=()=>openBox(u,f)}).catch(()=>{im.alt='图片加载失败'});
       }
       c.append(g);
     }
