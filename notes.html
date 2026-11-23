@@ -31,7 +31,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 .txt.clamp{max-height:9.6em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 65%,transparent);mask-image:linear-gradient(#000 65%,transparent)}
 .imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .imgs img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);min-height:40px;min-width:40px;background:var(--bg)}
-.meta{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
+.meta{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
 .meta button{padding:2px 8px;font-size:12px}
 .pic{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
 .pic button{font-size:12px;padding:2px 8px}
@@ -224,6 +224,19 @@ function openBox(u,f){
   const b=btn('💾 保存到手机',e=>{e.stopPropagation();savePic(f)});
   o.append(im,b,tip);o.onclick=()=>o.remove();document.body.append(o);
 }
+try{history.scrollRestoration='manual'}catch(e){}
+/* 给新加的行自动补时间：〔2026年11月23日 12:01〕 */
+const stampRe=/〔[^〕]*〕\s*$/;
+function stampNow(){const d=new Date(),p=x=>String(x).padStart(2,'0');return '〔'+d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+p(d.getHours())+':'+p(d.getMinutes())+'〕'}
+function stampNew(oldText,newText){
+  const cnt=new Map();for(const l of oldText.split('\n'))cnt.set(l,(cnt.get(l)||0)+1);
+  const st=stampNow();
+  return newText.split('\n').map(l=>{
+    if(cnt.get(l)>0){cnt.set(l,cnt.get(l)-1);return l}      // 原来就有的行，不动
+    if(!l.trim()||stampRe.test(l))return l;                  // 空行、或已带时间的行，不动
+    return l.replace(/\s+$/,'')+' '+st;
+  }).join('\n');
+}
 let editorOpen=null;
 addEventListener('popstate',()=>{if(editorOpen){editorOpen.save();editorOpen.close(true)}}); // 返回键 = 自动保存并退出
 function openEditor(n){
@@ -232,7 +245,9 @@ function openEditor(n){
   const vv=window.visualViewport;
   const fit=()=>{o.style.height=(vv?vv.height:innerHeight)+'px';o.style.top=(vv?vv.offsetTop:0)+'px'};
   const oldOverflow=document.body.style.overflow;
-  const save=()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}};
+  const base=n.text||'';                  // 打开编辑时的原文，用它来判断哪些行是新加的
+  const save=()=>{const v=stampNew(base,ta.value);if(v!==(n.text||'')){n.text=v;touch(n)}};   // 正式保存：新行自动加时间
+  const draft=()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}};                    // 切到别的 App：只存草稿，不加时间
   // 关闭编辑页；back=true 表示由手机返回键触发（历史记录已经退了一格）
   const close=(byBack)=>{
     if(!editorOpen)return;editorOpen=null;
@@ -241,10 +256,14 @@ function openEditor(n){
     document.body.style.overflow=oldOverflow;o.remove();
     if(!byBack&&history.state&&history.state.ed)history.back();
   };
-  const onHide=()=>{if(document.hidden)save()}; // 切到别的 App 也自动保存
+  const onHide=()=>{if(document.hidden)draft()}; // 切到别的 App 也自动保存
   const bar=document.createElement('div');bar.className='bar';
   const title=document.createElement('b');title.textContent='编辑笔记';
-  const cancel=btn('取消',()=>{if(ta.value===(n.text||'')||confirm('放弃修改？'))close()});
+  const cancel=btn('取消',()=>{
+    if(ta.value!==base&&!confirm('放弃修改？'))return;
+    if((n.text||'')!==base){n.text=base;touch(n)}   // 若之前已存过草稿，恢复原文
+    close();
+  });
   const ok=btn('保存',()=>{save();close()});
   ok.className='pri';
   editorOpen={save,close};
@@ -269,7 +288,7 @@ $('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaK
 
 /* ---------- 增删改 ---------- */
 function add(){
-  const text=$('#inp').value.trim();
+  const text=stampNew('',$('#inp').value.trim()); // 新建：每一行都自动带时间
   if(!text&&!pending.length)return;
   touch({id:uid(),text,files:pending,pinned:false,deleted:false,created:Date.now()});
   $('#inp').value='';pending=[];renderThumbs();
@@ -292,6 +311,7 @@ const openSet=new Set(); // 已展开的笔记 id（刷新同步后保持）
 function btn(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
 
 function render(){
+  const y=window.scrollY; // 重绘列表会让页面瞬间变短导致跳回顶部，先记住位置，画完再恢复
   const q=$('#q').value.trim().toLowerCase();
   const list=Object.values(notes).filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
     .sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
@@ -337,6 +357,7 @@ function render(){
       m.insertBefore(tg,sp.nextSibling);
     }else t.classList.remove('clamp');
   }
+  window.scrollTo(0,y);
 }
 
 /* ---------- 设置 ---------- */
