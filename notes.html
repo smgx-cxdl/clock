@@ -12,8 +12,8 @@
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:720px;margin:0 auto;padding:12px 14px calc(40px + env(safe-area-inset-bottom))}
 header{display:flex;align-items:center;gap:8px;padding:6px 0 10px}
-header h1{font-size:19px;margin:0;flex:1}
-#stat{font-size:12px;color:var(--mute)}
+header h1{font-size:19px;margin:0;flex:1;min-width:0;white-space:nowrap}
+#stat{flex:none;white-space:nowrap;font-size:12px;color:var(--mute)}
 .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
 textarea,input.f{width:100%;border:0;outline:0;resize:vertical;background:transparent;color:var(--ink);font:inherit}
 textarea{min-height:84px}
@@ -35,10 +35,10 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 .meta button{padding:2px 8px;font-size:12px}
 .pic{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
 .pic button{font-size:12px;padding:2px 8px}
-.lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
+.lb{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
 .lb img{max-width:100%;max-height:75vh;border-radius:6px}
 .lb div{color:#bbb;font-size:12px}
-.ed{position:fixed;inset:0;z-index:10;background:var(--bg);display:flex;flex-direction:column;height:100vh;height:100dvh;padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
+.ed{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10;background:var(--bg);display:flex;flex-direction:column;box-sizing:border-box;padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
 .ed .bar{display:flex;align-items:center;gap:8px;max-width:720px;width:100%;margin:0 auto 8px}
 .ed .bar b{flex:1;font-size:16px}
 .ed textarea{flex:1;width:100%;max-width:720px;margin:0 auto;min-height:0;resize:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;line-height:1.6}
@@ -154,7 +154,7 @@ let busy=false,again=false;
 async function syncNow(){
   if(!cfg)return;
   if(busy){again=true;return}
-  busy=true;status('同步中…');
+  busy=true;status('同步中…');$('#stat').title='';
   try{
     for(let i=0;i<3;i++){
       const{notes:remote,sha}=await pull();
@@ -164,8 +164,9 @@ async function syncNow(){
       if(!needPush)break;
       if(await put(merged,sha)==='ok')break;
     }
-    status('已同步 '+new Date().toLocaleTimeString().slice(0,5));
-  }catch(e){status('同步失败：'+(e.message||'网络错误')+'（已存本机）')}
+    const d=new Date(),p2=x=>String(x).padStart(2,'0');
+    status('已同步 '+p2(d.getHours())+':'+p2(d.getMinutes()));
+  }catch(e){status('⚠ 同步失败');$('#stat').title=(e.message||'网络错误')+'（已存本机）'}
   busy=false;
   if(again){again=false;syncNow()}
 }
@@ -226,14 +227,19 @@ function openBox(u,f){
 function openEditor(n){
   const o=document.createElement('div');o.className='ed';
   const ta=document.createElement('textarea');ta.value=n.text||'';
-  const close=()=>o.remove();
+  const vv=window.visualViewport;
+  const fit=()=>{o.style.height=(vv?vv.height:innerHeight)+'px';o.style.top=(vv?vv.offsetTop:0)+'px'};
+  const oldOverflow=document.body.style.overflow;
+  const close=()=>{if(vv){vv.removeEventListener('resize',fit);vv.removeEventListener('scroll',fit)}document.body.style.overflow=oldOverflow;o.remove()};
   const bar=document.createElement('div');bar.className='bar';
   const title=document.createElement('b');title.textContent='编辑笔记';
   const cancel=btn('取消',()=>{if(ta.value===(n.text||'')||confirm('放弃修改？'))close()});
   const ok=btn('保存',()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}close()});
   ok.className='pri';
   bar.append(cancel,title,ok);o.append(bar,ta);document.body.append(o);
-  ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);
+  document.body.style.overflow='hidden';fit();
+  if(vv){vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit)}
+  setTimeout(()=>{ta.focus({preventScroll:true});ta.setSelectionRange(ta.value.length,ta.value.length)},60);
 }
 function renderThumbs(){
   $('#thumbs').innerHTML='';
