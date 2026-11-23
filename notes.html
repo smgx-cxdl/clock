@@ -34,7 +34,8 @@ input.search{width:100%;margin:0;padding:9px 40px 9px 12px;border:1px solid var(
 .imgs img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);min-height:40px;min-width:40px;background:var(--bg)}
 .meta{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
 .meta button{padding:2px 8px;font-size:12px}
-.when{font-size:12px;color:var(--mute);margin-top:8px;white-space:pre-line}
+.when{font-size:12px;color:var(--mute);margin-top:8px}
+.stamp{font-size:12px;color:var(--mute)}
 .pic{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
 .pic button{font-size:12px;padding:2px 8px}
 .lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
@@ -98,9 +99,7 @@ let cfg=jget('gh.cfg',null);
 let notes=jget('gh.notes',{});
 let pending=[];
 let editing=null;
-let shown=50; // 先显示最新 50 条，点“加载更多”再多显示
-const openEd=new Set(); // 已展开编辑时间的笔记
-const persist=()=>localStorage.setItem('gh.notes',JSON.stringify(notes));
+let shown=50; // 先显示最新 50 条，点“加载更多”再多显示const persist=()=>localStorage.setItem('gh.notes',JSON.stringify(notes));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const status=t=>$('#stat').textContent=t;
 
@@ -257,7 +256,7 @@ $('#qx').onclick=()=>{$('#q').value='';shown=50;syncX();render();$('#q').focus()
 const io='IntersectionObserver' in window?new IntersectionObserver(es=>{
   for(const e of es)if(e.isIntersecting){io.unobserve(e.target);if(e.target._load)e.target._load()}
 },{rootMargin:'300px'}):null;
-const fmt=t=>{const d=new Date(t);return (d.getFullYear()!==new Date().getFullYear()?d.getFullYear()+'年':'')+(d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+const fmt=t=>{const d=new Date(t);return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
 function linkify(el,text){
   const re=/(https?:\/\/[^\s<>"]+)/g;let last=0,m;
   while((m=re.exec(text))){
@@ -267,12 +266,24 @@ function linkify(el,text){
   }
   el.append(text.slice(last));
 }
+// 正文里形如“〔编辑 11月23日 10:20〕”的整行，显示成灰色小字
+function renderText(el,text){
+  const lines=text.split('\n');
+  lines.forEach((line,i)=>{
+    if(/^〔编辑 [^〕]*〕$/.test(line.trim())){
+      const s=document.createElement('span');s.className='stamp';s.textContent=line.trim();el.append(s);
+    }else linkify(el,line);
+    if(i<lines.length-1)el.append('\n');
+  });
+}
+// 搜索时不算“〔编辑 …〕”这些时间行
+const plain=t=>(t||'').split('\n').filter(l=>!/^〔编辑 [^〕]*〕$/.test(l.trim())).join('\n');
 function btn(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
 
 function render(){
   if(io)io.disconnect();
   const q=$('#q').value.trim().toLowerCase();
-  const list=Object.values(notes).filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
+  const list=Object.values(notes).filter(n=>!n.deleted&&(!q||plain(n.text).toLowerCase().includes(q)))
     .sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
   const box=$('#list');box.innerHTML='';
   if(!list.length){box.innerHTML='<div class="empty">'+(q?'没有找到':'还没有记录')+'</div>';return}
@@ -282,10 +293,10 @@ function render(){
       const ta=document.createElement('textarea');ta.value=n.text||'';ta.style.minHeight='100px';
       const row=document.createElement('div');row.className='row';
       row.append(btn('取消',()=>{editing=null;render()}),
-        Object.assign(btn('保存',()=>{editing=null;if(ta.value!==(n.text||'')){n.text=ta.value;n.edits=(n.edits||(n.edited?[n.edited]:[])).concat(Date.now())}touch(n)}),{className:'pri'}));
+        Object.assign(btn('保存',()=>{editing=null;if(ta.value!==(n.text||'')){n.text=ta.value.replace(/\s+$/,'')+'\n〔编辑 '+fmt(Date.now())+'〕'}touch(n)}),{className:'pri'}));
       c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
     }
-    const t=document.createElement('div');t.className='txt';linkify(t,n.text||'');c.append(t);
+    const t=document.createElement('div');t.className='txt';renderText(t,n.text||'');c.append(t);
     if(n.files?.length){
       const g=document.createElement('div');g.className='imgs';
       for(const f of n.files){
@@ -298,18 +309,7 @@ function render(){
       c.append(g);
     }
     const wh=document.createElement('div');wh.className='when';
-    const eds=n.edits||(n.edited?[n.edited]:[]);
-    const head=(n.pinned?'📌 ':'')+fmt(n.created);
-    if(!eds.length){wh.textContent=head}
-    else{
-      const open=openEd.has(n.id);
-      const tg=document.createElement('span');tg.style.cursor='pointer';
-      tg.textContent=head+' · 编辑 '+eds.length+' 次 '+(open?'▴':'▾');
-      tg.onclick=()=>{if(open)openEd.delete(n.id);else openEd.add(n.id);render()};
-      wh.append(tg);
-      if(open)wh.append(document.createTextNode('\n'+eds.map(x=>'编辑 '+fmt(x)).join('\n')));
-    }
-    c.append(wh);
+    wh.textContent=(n.pinned?'📌 ':'')+fmt(n.created);c.append(wh);
     const m=document.createElement('div');m.className='meta';
     const sp=document.createElement('span');sp.style.flex='1';
     m.append(sp,
