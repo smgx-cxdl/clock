@@ -34,6 +34,7 @@ input.search{width:100%;margin:0;padding:9px 40px 9px 12px;border:1px solid var(
 .imgs img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);min-height:40px;min-width:40px;background:var(--bg)}
 .meta{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
 .meta button{padding:2px 8px;font-size:12px}
+.when{font-size:12px;color:var(--mute);margin-bottom:4px}
 .pic{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
 .pic button{font-size:12px;padding:2px 8px}
 .lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
@@ -250,7 +251,7 @@ $('#q').oninput=()=>{syncX();render()};
 $('#qx').onclick=()=>{$('#q').value='';syncX();render();$('#q').focus()};
 
 /* ---------- 渲染 ---------- */
-const fmt=t=>{const d=new Date(t);return (d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+const fmt=t=>{const d=new Date(t);return (d.getFullYear()!==new Date().getFullYear()?d.getFullYear()+'年':'')+(d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
 function linkify(el,text){
   const re=/(https?:\/\/[^\s<>"]+)/g;let last=0,m;
   while((m=re.exec(text))){
@@ -274,9 +275,11 @@ function render(){
       const ta=document.createElement('textarea');ta.value=n.text||'';ta.style.minHeight='100px';
       const row=document.createElement('div');row.className='row';
       row.append(btn('取消',()=>{editing=null;render()}),
-        Object.assign(btn('保存',()=>{editing=null;n.text=ta.value;touch(n)}),{className:'pri'}));
+        Object.assign(btn('保存',()=>{editing=null;if(ta.value!==(n.text||'')){n.text=ta.value;n.edited=Date.now()}touch(n)}),{className:'pri'}));
       c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
     }
+    const wh=document.createElement('div');wh.className='when';
+    wh.textContent=(n.pinned?'📌 ':'')+fmt(n.created)+(n.edited?' · 编辑于 '+fmt(n.edited):'');c.append(wh);
     const t=document.createElement('div');t.className='txt';linkify(t,n.text||'');c.append(t);
     if(n.files?.length){
       const g=document.createElement('div');g.className='imgs';
@@ -289,9 +292,8 @@ function render(){
       c.append(g);
     }
     const m=document.createElement('div');m.className='meta';
-    const tm=document.createElement('span');tm.textContent=(n.pinned?'📌 ':'')+fmt(n.created);
     const sp=document.createElement('span');sp.style.flex='1';
-    m.append(tm,sp,
+    m.append(sp,
       btn('复制',()=>navigator.clipboard?.writeText(n.text||'')),
       btn(n.pinned?'取消置顶':'置顶',()=>{n.pinned=!n.pinned;touch(n)}),
       btn('编辑',()=>{editing=n.id;render()}),
