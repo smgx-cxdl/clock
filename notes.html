@@ -99,6 +99,7 @@ let notes=jget('gh.notes',{});
 let pending=[];
 let editing=null;
 let shown=50; // 先显示最新 50 条，点“加载更多”再多显示
+const openEd=new Set(); // 已展开编辑时间的笔记
 const persist=()=>localStorage.setItem('gh.notes',JSON.stringify(notes));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const status=t=>$('#stat').textContent=t;
@@ -298,7 +299,17 @@ function render(){
     }
     const wh=document.createElement('div');wh.className='when';
     const eds=n.edits||(n.edited?[n.edited]:[]);
-    wh.textContent=[(n.pinned?'📌 ':'')+fmt(n.created)].concat(eds.map(x=>'编辑 '+fmt(x))).join('\n');c.append(wh);
+    const head=(n.pinned?'📌 ':'')+fmt(n.created);
+    if(!eds.length){wh.textContent=head}
+    else{
+      const open=openEd.has(n.id);
+      const tg=document.createElement('span');tg.style.cursor='pointer';
+      tg.textContent=head+' · 编辑 '+eds.length+' 次 '+(open?'▴':'▾');
+      tg.onclick=()=>{if(open)openEd.delete(n.id);else openEd.add(n.id);render()};
+      wh.append(tg);
+      if(open)wh.append(document.createTextNode('\n'+eds.map(x=>'编辑 '+fmt(x)).join('\n')));
+    }
+    c.append(wh);
     const m=document.createElement('div');m.className='meta';
     const sp=document.createElement('span');sp.style.flex='1';
     m.append(sp,
