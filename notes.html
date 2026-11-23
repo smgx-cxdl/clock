@@ -24,6 +24,9 @@ button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(-
 button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
 .sp{flex:1}
 input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;outline:0}
+.sw{position:relative;margin:12px 0}
+.sw input.search{margin:0;padding-right:44px}
+.sw .x{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--mute);font-size:18px;line-height:1;padding:8px 12px}
 .note{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
 .note.pin{border-color:var(--acc)}
 .txt{white-space:pre-wrap;word-break:break-word}
@@ -85,7 +88,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
         <button class="pri" id="add">保存</button>
       </div>
     </div>
-    <input class="search" id="q" placeholder="搜索…">
+    <div class="sw"><input class="search" id="q" placeholder="搜索…" enterkeyhint="search" autocomplete="off"><button class="x hide" id="qx" aria-label="清空搜索">✕</button></div>
     <div id="list"></div>
   </div>
 </div>
@@ -294,7 +297,10 @@ function add(){
   $('#inp').value='';pending=[];renderThumbs();
 }
 $('#add').onclick=add;
-$('#q').oninput=render;
+const qBox=$('#q'),qX=$('#qx');
+qBox.oninput=()=>{qX.classList.toggle('hide',!qBox.value);render()};
+qX.onclick=()=>{qBox.value='';qX.classList.add('hide');render()};            // ✕ 一键清空搜索
+qBox.addEventListener('keydown',e=>{if(e.key==='Escape')qX.click()});
 
 /* ---------- 渲染 ---------- */
 const fmt=t=>{const d=new Date(t);return (d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
