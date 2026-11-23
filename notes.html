@@ -35,7 +35,7 @@ input.search{width:100%;margin:0;padding:9px 40px 9px 12px;border:1px solid var(
 .meta{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mute)}
 .meta button{padding:2px 8px;font-size:12px}
 .when{font-size:12px;color:var(--mute);margin-top:8px}
-.stamp{font-size:12px;color:var(--mute)}
+.stamp{font-size:11px;color:var(--mute);opacity:.6}
 .pic{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:100%}
 .pic button{font-size:12px;padding:2px 8px}
 .lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
@@ -267,18 +267,21 @@ function linkify(el,text){
   }
   el.append(text.slice(last));
 }
-// 正文里形如“〔编辑 11月23日 10:20〕”的整行，显示成灰色小字
+// 正文里形如“〔2026年11月23日 10:20〕”的整行是编辑时间（兼容旧的“〔编辑 …〕”），显示成浅灰小字
+const STAMP=/^〔(?:编辑 )?(?:\d{4}年)?\d{1,2}月\d{1,2}日 \d{2}:\d{2}〕$/;
+const cleanStamp=l=>l.trim().replace('〔编辑 ','〔');
 function renderText(el,text){
   const lines=text.split('\n');
   lines.forEach((line,i)=>{
-    if(/^〔编辑 [^〕]*〕$/.test(line.trim())){
-      const s=document.createElement('span');s.className='stamp';s.textContent=line.trim();el.append(s);
+    if(STAMP.test(line.trim())){
+      const s=document.createElement('span');s.className='stamp';s.textContent=cleanStamp(line);el.append(s);
     }else linkify(el,line);
     if(i<lines.length-1)el.append('\n');
   });
 }
 // 搜索时不算“〔编辑 …〕”这些时间行
-const plain=t=>(t||'').split('\n').filter(l=>!/^〔编辑 [^〕]*〕$/.test(l.trim())).join('\n');
+const splitStamps=t=>{const L=(t||'').split('\n');return{body:L.filter(l=>!STAMP.test(l.trim())).join('\n').replace(/\s+$/,''),stamps:L.filter(l=>STAMP.test(l.trim())).map(cleanStamp)}};
+const plain=t=>splitStamps(t).body;
 function btn(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
 
 function render(){
@@ -291,11 +294,16 @@ function render(){
   for(const n of list.slice(0,shown)){
     const c=document.createElement('div');c.className='note'+(n.pinned?' pin':'');
     if(editing===n.id){
-      const ta=document.createElement('textarea');ta.value=n.text||'';ta.style.minHeight='100px';
+      const sp2=splitStamps(n.text);
+      const ta=document.createElement('textarea');ta.value=sp2.body;ta.style.minHeight='100px';
       const row=document.createElement('div');row.className='row';
       row.append(btn('取消',()=>{editing=null;render()}),
-        Object.assign(btn('保存',()=>{editing=null;if(ta.value!==(n.text||'')){n.text=ta.value.replace(/\s+$/,'')+'\n〔编辑 '+fmt(Date.now())+'〕'}touch(n)}),{className:'pri'}));
-      c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
+        Object.assign(btn('保存',()=>{editing=null;const nb=ta.value.replace(/\s+$/,'');if(nb!==sp2.body){n.text=[nb].concat(sp2.stamps,['〔'+fmt(Date.now())+'〕']).join('\n')}touch(n)}),{className:'pri'}));
+      if(sp2.stamps.length){
+        const st=document.createElement('div');st.className='stamp';st.style.cssText='white-space:pre-line;margin-top:4px';
+        st.textContent=sp2.stamps.join('\n');c.append(ta,st,row);
+      }else c.append(ta,row);
+      box.append(c);setTimeout(()=>ta.focus(),0);continue;
     }
     const t=document.createElement('div');t.className='txt';renderText(t,n.text||'');c.append(t);
     if(n.files?.length){
