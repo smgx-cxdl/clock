@@ -224,18 +224,32 @@ function openBox(u,f){
   const b=btn('💾 保存到手机',e=>{e.stopPropagation();savePic(f)});
   o.append(im,b,tip);o.onclick=()=>o.remove();document.body.append(o);
 }
+let editorOpen=null;
+addEventListener('popstate',()=>{if(editorOpen){editorOpen.save();editorOpen.close(true)}}); // 返回键 = 自动保存并退出
 function openEditor(n){
   const o=document.createElement('div');o.className='ed';
   const ta=document.createElement('textarea');ta.value=n.text||'';
   const vv=window.visualViewport;
   const fit=()=>{o.style.height=(vv?vv.height:innerHeight)+'px';o.style.top=(vv?vv.offsetTop:0)+'px'};
   const oldOverflow=document.body.style.overflow;
-  const close=()=>{if(vv){vv.removeEventListener('resize',fit);vv.removeEventListener('scroll',fit)}document.body.style.overflow=oldOverflow;o.remove()};
+  const save=()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}};
+  // 关闭编辑页；back=true 表示由手机返回键触发（历史记录已经退了一格）
+  const close=(byBack)=>{
+    if(!editorOpen)return;editorOpen=null;
+    if(vv){vv.removeEventListener('resize',fit);vv.removeEventListener('scroll',fit)}
+    document.removeEventListener('visibilitychange',onHide);
+    document.body.style.overflow=oldOverflow;o.remove();
+    if(!byBack&&history.state&&history.state.ed)history.back();
+  };
+  const onHide=()=>{if(document.hidden)save()}; // 切到别的 App 也自动保存
   const bar=document.createElement('div');bar.className='bar';
   const title=document.createElement('b');title.textContent='编辑笔记';
   const cancel=btn('取消',()=>{if(ta.value===(n.text||'')||confirm('放弃修改？'))close()});
-  const ok=btn('保存',()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}close()});
+  const ok=btn('保存',()=>{save();close()});
   ok.className='pri';
+  editorOpen={save,close};
+  history.pushState({ed:1},'');           // 让手机返回键先退出编辑页，而不是退出网页
+  document.addEventListener('visibilitychange',onHide);
   bar.append(cancel,title,ok);o.append(bar,ta);document.body.append(o);
   document.body.style.overflow='hidden';fit();
   if(vv){vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit)}
