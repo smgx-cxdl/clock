@@ -272,14 +272,15 @@ const TOK='〔(?:编辑 )?(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日 \\d{2}:\\d{2}〕'
 const LINE=new RegExp('^(.*?)((?:\\s*'+TOK+')+)\\s*$');
 const TOKG=new RegExp(TOK,'g');
 const cleanStamp=s=>s.replace(/〔编辑 /g,'〔');
-const normStamps=t=>(t||'').split('\n').map(l=>{const m=LINE.exec(l);return m?m[1]+(m[1]?' ':'')+cleanStamp(m[2].trim()):l}).join('\n'); // 进编辑框时去掉旧时间里的“编辑”二字
+const lastStamp=s=>cleanStamp(s.match(TOKG).pop()); // 一行后面有多个时间时，只取最后一个
+const normStamps=t=>(t||'').split('\n').map(l=>{const m=LINE.exec(l);return m?m[1]+(m[1]?' ':'')+lastStamp(m[2]):l}).join('\n'); // 进编辑框时去掉旧时间里的“编辑”二字
 function renderText(el,text){
   const lines=text.split('\n');
   lines.forEach((line,i)=>{
     const m=LINE.exec(line);
     if(m){
       if(m[1])linkify(el,m[1]);
-      const s=document.createElement('span');s.className='stamp';s.textContent=(m[1]?' ':'')+cleanStamp(m[2].trim());el.append(s);
+      const s=document.createElement('span');s.className='stamp';s.textContent=(m[1]?' ':'')+lastStamp(m[2]);el.append(s);
     }else linkify(el,line);
     if(i<lines.length-1)el.append('\n');
   });
@@ -294,7 +295,7 @@ const stampEdit=(orig,nv)=>{
   let s=0;while(s<a.length-p&&s<b.length-p&&a[a.length-1-s]===b[b.length-1-s])s++;
   let i=b.length-s-1;
   while(i>=p&&!plain(b[i]).trim())i--;
-  if(i>=p)b[i]=b[i].replace(/\s+$/,'')+' 〔'+fmt(Date.now())+'〕';
+  if(i>=p){const mm=LINE.exec(b[i]);b[i]=(mm?mm[1]:b[i]).replace(/\s+$/,'')+' 〔'+fmt(Date.now())+'〕'}
   return b.join('\n');
 };
 function btn(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
