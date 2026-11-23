@@ -38,6 +38,10 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 .lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
 .lb img{max-width:100%;max-height:75vh;border-radius:6px}
 .lb div{color:#bbb;font-size:12px}
+.ed{position:fixed;inset:0;z-index:10;background:var(--bg);display:flex;flex-direction:column;height:100vh;height:100dvh;padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
+.ed .bar{display:flex;align-items:center;gap:8px;max-width:720px;width:100%;margin:0 auto 8px}
+.ed .bar b{flex:1;font-size:16px}
+.ed textarea{flex:1;width:100%;max-width:720px;margin:0 auto;min-height:0;resize:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;line-height:1.6}
 .thumbs{display:flex;gap:6px;flex-wrap:wrap}
 .thumbs span{font-size:12px;background:var(--bg);border-radius:6px;padding:2px 8px}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
@@ -219,6 +223,18 @@ function openBox(u,f){
   const b=btn('💾 保存到手机',e=>{e.stopPropagation();savePic(f)});
   o.append(im,b,tip);o.onclick=()=>o.remove();document.body.append(o);
 }
+function openEditor(n){
+  const o=document.createElement('div');o.className='ed';
+  const ta=document.createElement('textarea');ta.value=n.text||'';
+  const close=()=>o.remove();
+  const bar=document.createElement('div');bar.className='bar';
+  const title=document.createElement('b');title.textContent='编辑笔记';
+  const cancel=btn('取消',()=>{if(ta.value===(n.text||'')||confirm('放弃修改？'))close()});
+  const ok=btn('保存',()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}close()});
+  ok.className='pri';
+  bar.append(cancel,title,ok);o.append(bar,ta);document.body.append(o);
+  ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);
+}
 function renderThumbs(){
   $('#thumbs').innerHTML='';
   pending.forEach((a,i)=>{const s=document.createElement('span');s.textContent='🖼 '+a.name+' ✕';s.onclick=()=>{pending.splice(i,1);renderThumbs()};$('#thumbs').append(s)});
@@ -287,7 +303,7 @@ function render(){
     m.append(tm,sp,
       btn('复制',()=>navigator.clipboard?.writeText(n.text||'')),
       btn(n.pinned?'取消置顶':'置顶',()=>{n.pinned=!n.pinned;touch(n)}),
-      btn('编辑',()=>{editing=n.id;render()}),
+      btn('编辑',()=>openEditor(n)),
       btn('删除',()=>{if(confirm('删除这条？')){n.deleted=true;touch(n)}}));
     c.append(m);box.append(c);
     // 折叠：内容超出 6 行才出现展开/收起按钮
