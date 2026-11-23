@@ -267,22 +267,36 @@ function linkify(el,text){
   }
   el.append(text.slice(last));
 }
-// 正文里形如“〔2026年11月23日 10:20〕”的整行是编辑时间（兼容旧的“〔编辑 …〕”），显示成浅灰小字
-const STAMP=/^〔(?:编辑 )?(?:\d{4}年)?\d{1,2}月\d{1,2}日 \d{2}:\d{2}〕$/;
-const cleanStamp=l=>l.trim().replace('〔编辑 ','〔');
-const normStamps=t=>(t||'').split('\n').map(l=>STAMP.test(l.trim())?cleanStamp(l):l).join('\n'); // 旧时间行去掉“编辑”二字
+// 编辑时间“〔2026年11月23日 10:20〕”跟在被编辑的那一行末尾（兼容旧的“〔编辑 …〕”和单独成行的旧时间），显示成灰色小字
+const TOK='〔(?:编辑 )?(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日 \\d{2}:\\d{2}〕';
+const LINE=new RegExp('^(.*?)((?:\\s*'+TOK+')+)\\s*$');
+const TOKG=new RegExp(TOK,'g');
+const cleanStamp=s=>s.replace(/〔编辑 /g,'〔');
+const normStamps=t=>(t||'').split('\n').map(l=>{const m=LINE.exec(l);return m?m[1]+(m[1]?' ':'')+cleanStamp(m[2].trim()):l}).join('\n'); // 进编辑框时去掉旧时间里的“编辑”二字
 function renderText(el,text){
   const lines=text.split('\n');
   lines.forEach((line,i)=>{
-    if(STAMP.test(line.trim())){
-      const s=document.createElement('span');s.className='stamp';s.textContent=cleanStamp(line);el.append(s);
+    const m=LINE.exec(line);
+    if(m){
+      if(m[1])linkify(el,m[1]);
+      const s=document.createElement('span');s.className='stamp';s.textContent=(m[1]?' ':'')+cleanStamp(m[2].trim());el.append(s);
     }else linkify(el,line);
     if(i<lines.length-1)el.append('\n');
   });
 }
 // 搜索时不算“〔编辑 …〕”这些时间行
-const splitStamps=t=>{const L=(t||'').split('\n');return{body:L.filter(l=>!STAMP.test(l.trim())).join('\n').replace(/\s+$/,''),stamps:L.filter(l=>STAMP.test(l.trim())).map(cleanStamp)}};
-const plain=t=>splitStamps(t).body;
+const plain=t=>(t||'').replace(TOKG,'');
+// 保存时：找出你改动的行，只在改动的最后一行末尾加时间；整行删掉时它的时间也跟着没了；内容删光不留时间
+const stampEdit=(orig,nv)=>{
+  if(!plain(nv).trim())return '';
+  const a=orig.split('\n'),b=nv.replace(/\s+$/,'').split('\n');
+  let p=0;while(p<a.length&&p<b.length&&a[p]===b[p])p++;
+  let s=0;while(s<a.length-p&&s<b.length-p&&a[a.length-1-s]===b[b.length-1-s])s++;
+  let i=b.length-s-1;
+  while(i>=p&&!plain(b[i]).trim())i--;
+  if(i>=p)b[i]=b[i].replace(/\s+$/,'')+' 〔'+fmt(Date.now())+'〕';
+  return b.join('\n');
+};
 function btn(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=fn;return b}
 
 function render(){
@@ -299,10 +313,10 @@ function render(){
       const ta=document.createElement('textarea');ta.value=orig;ta.style.minHeight='100px';
       const row=document.createElement('div');row.className='row';
       row.append(btn('取消',()=>{editing=null;render()}),
-        Object.assign(btn('保存',()=>{editing=null;if(ta.value!==orig){n.text=ta.value.replace(/\s+$/,'')+'\n〔'+fmt(Date.now())+'〕'}touch(n)}),{className:'pri'}));
+        Object.assign(btn('保存',()=>{editing=null;if(ta.value!==orig)n.text=stampEdit(orig,ta.value);touch(n)}),{className:'pri'}));
       c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
     }
-    const t=document.createElement('div');t.className='txt';renderText(t,n.text||'');c.append(t);
+    const t=document.createElement('div');t.className='txt';renderText(t,plain(n.text).trim()?n.text:'');c.append(t);
     if(n.files?.length){
       const g=document.createElement('div');g.className='imgs';
       for(const f of n.files){
