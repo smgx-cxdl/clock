@@ -11,12 +11,14 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:720px;margin:0 auto;padding:12px 14px calc(40px + env(safe-area-inset-bottom))}
-header{display:flex;align-items:center;padding:6px 0 10px}
-header h1{font-size:19px;margin:0;flex:1;min-width:0;white-space:nowrap}
-#stat{flex:none;white-space:nowrap;font-size:12px;color:var(--mute)}
-#stat:not(:empty){margin-left:8px}
+header{display:flex;align-items:center;flex-wrap:wrap;padding:6px 0 8px}
+header h1{font-size:18px;margin:0 auto 0 0;white-space:nowrap}
+#stat{flex:none;white-space:nowrap;font-size:12px;color:var(--mute);margin:2px 0 2px 6px}
+#stat:empty{display:none}
+header button{padding:5px 8px;font-size:13px;margin-top:2px;margin-bottom:2px}
 #refresh{margin-left:10px}
-#gear{margin-left:8px}
+#trash_btn{margin-left:6px}
+#gear{margin-left:6px}
 .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
 textarea,input.f{width:100%;border:0;outline:0;resize:vertical;background:transparent;color:var(--ink);font:inherit}
 textarea{min-height:84px}
@@ -56,8 +58,6 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 .thumbs{display:flex;gap:6px;flex-wrap:wrap}
 .thumbs span{font-size:12px;background:var(--bg);border-radius:6px;padding:2px 8px}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
-.trash-bar{text-align:center;margin:10px 0 20px}
-.trash-bar button{font-size:13px;color:var(--mute)}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:12;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
 .toast button{padding:3px 10px;font-size:13px;border-color:transparent;background:var(--acc);color:#fff}
 .help{font-size:13px;color:var(--mute);line-height:1.7;margin:0 0 12px}
@@ -71,6 +71,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
     <h1>📒 记事本</h1>
     <span id="stat"></span>
     <button id="refresh">刷新</button>
+    <button id="trash_btn">回收站</button>
     <button id="gear">设置</button>
   </header>
 
@@ -86,7 +87,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
     <label>仓库名</label><input class="f" id="c_repo" autocapitalize="off" autocomplete="off" placeholder="my-notes">
     <label>Token</label><input class="f" id="c_token" type="password" autocomplete="off">
     <label>分支</label><input class="f" id="c_branch" autocapitalize="off" autocomplete="off" placeholder="main">
-    <div class="row"><button id="c_trash">🗑 回收站</button><button id="c_clear">清除本机数据</button><span class="sp"></span><button id="c_cancel">取消</button><button class="pri" id="c_save">保存并连接</button></div>
+    <div class="row"><button id="c_clear">清除本机数据</button><span class="sp"></span><button id="c_cancel">取消</button><button class="pri" id="c_save">保存并连接</button></div>
   </div>
 
   <div id="main">
@@ -346,16 +347,26 @@ function openHistory(n,ta,base){
   o.append(bar,sc);document.body.append(o);
 }
 
-/* ---------- 回收站（恢复误删笔记） ---------- */
+/* ---------- 回收站（恢复误删笔记 + 一键清空） ---------- */
 function openTrash(){
   const o=document.createElement('div');o.className='ed sub';
   const bar=document.createElement('div');bar.className='bar';
   const title=document.createElement('b');title.textContent='回收站';
   const closeBtn=btn('关闭',()=>o.remove());
+  const emptyBtn=btn('一键清空',()=>{
+    const list=Object.values(notes).filter(n=>n.deleted&&!n.purged);
+    if(!list.length)return;
+    if(!confirm('确定彻底清空回收站里的 '+list.length+' 条笔记？清空后无法恢复！'))return;
+    const now=Date.now();
+    for(const n of list)notes[n.id]={id:n.id,deleted:true,purged:true,updated:now};
+    persist();render();syncNow();draw();
+  });
   const sc=document.createElement('div');sc.className='scroll';
   const draw=()=>{
     sc.innerHTML='';
     const list=Object.values(notes).filter(n=>n.deleted&&!n.purged).sort((a,b)=>(b.updated||0)-(a.updated||0));
+    title.textContent=list.length?'回收站 ('+list.length+')':'回收站';
+    emptyBtn.classList.toggle('hide',!list.length);
     if(!list.length){sc.innerHTML='<div class="empty">回收站是空的</div>';return}
     for(const n of list){
       const c=document.createElement('div');c.className='note';
@@ -374,9 +385,10 @@ function openTrash(){
       m.append(tm,sp,purge,restore);c.append(t,m);sc.append(c);
     }
   };
-  bar.append(closeBtn,title);o.append(bar,sc);document.body.append(o);
+  bar.append(closeBtn,title,emptyBtn);o.append(bar,sc);document.body.append(o);
   draw();
 }
+$('#trash_btn').onclick=openTrash;
 
 let editorOpen=null;
 addEventListener('popstate',()=>{if(editorOpen){editorOpen.save();editorOpen.close(true)}}); // 返回键 = 自动保存并退出
@@ -479,9 +491,7 @@ function btn(label,fn){const b=document.createElement('button');b.textContent=la
 function render(){
   const y=window.scrollY; // 重绘列表会让页面瞬间变短导致跳回顶部，先记住位置，画完再恢复
   const q=$('#q').value.trim().toLowerCase();
-  const all=Object.values(notes);
-  const trashCount=all.filter(n=>n.deleted&&!n.purged).length;
-  const list=all.filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
+  const list=Object.values(notes).filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
     .sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
   const box=$('#list');box.innerHTML='';
   if(!list.length){
@@ -528,11 +538,6 @@ function render(){
       }else t.classList.remove('clamp');
     }
   }
-  if(!q&&trashCount>0){
-    const tb=document.createElement('div');tb.className='trash-bar';
-    tb.append(btn('🗑 回收站 ('+trashCount+')',openTrash));
-    box.append(tb);
-  }
   window.scrollTo(0,y);
 }
 
@@ -546,7 +551,6 @@ function showSetup(on){
   }
 }
 $('#gear').onclick=()=>showSetup(true);
-$('#c_trash').onclick=()=>{showSetup(false);openTrash()};
 $('#c_cancel').onclick=()=>showSetup(!cfg);
 $('#c_clear').onclick=()=>{
   if(confirm('清除本机保存的设置和笔记缓存？（仓库里的笔记不受影响）')){
