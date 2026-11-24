@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#f6f5f1">
+<meta name="theme-color" content="#f5f5f5">
 <title>記事本</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
 <style>
-:root{--bg:#f6f5f1;--card:#fff;--ink:#222;--mute:#8a8a84;--line:#e6e4dc;--acc:#2f6f5e}
-@media(prefers-color-scheme:dark){:root{--bg:#161615;--card:#212120;--ink:#e8e6df;--mute:#8d8b83;--line:#33322f;--acc:#6fbfa8}}
+:root{--bg:#f5f5f5;--card:#fff;--ink:#222;--mute:#8a8a8a;--line:#e3e3e3;--acc:#555}
+@media(prefers-color-scheme:dark){:root{--bg:#161616;--card:#212121;--ink:#e8e8e8;--mute:#8d8d8d;--line:#333;--acc:#bbb}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:720px;margin:0 auto;padding:12px 14px calc(40px + env(safe-area-inset-bottom))}
@@ -27,9 +27,11 @@ input.f{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:4
 label{font-size:13px;color:var(--mute)}
 .row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
-button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.pri{background:var(--mute);border-color:var(--mute);color:#fff}
 button.on{border-color:var(--acc);color:var(--acc)}
 button.off{color:var(--mute)}
+#attach,#stamp_tog{padding:2px 7px;font-size:12px}
+.ico,button,.thumbs span,.meta span{filter:grayscale(1)}
 .sp{flex:1}
 input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;outline:0}
 .sw{position:relative;margin:12px 0}
@@ -69,7 +71,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 <body>
 <div class="wrap">
   <header>
-    <h1>📒 記事本</h1>
+    <h1><span class="ico">📒</span> 記事本</h1>
     <span id="stat"></span>
     <button id="refresh">重新整理</button>
     <button id="trash_btn">回收箱</button>
