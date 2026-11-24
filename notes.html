@@ -25,6 +25,8 @@ label{font-size:13px;color:var(--mute)}
 .row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
 button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.on{border-color:var(--acc);color:var(--acc)}
+button.off{color:var(--mute)}
 .sp{flex:1}
 input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;outline:0}
 .sw{position:relative;margin:12px 0}
@@ -45,12 +47,19 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
 .lb img{max-width:100%;max-height:75vh;border-radius:6px}
 .lb div{color:#bbb;font-size:12px}
 .ed{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10;background:var(--bg);display:flex;flex-direction:column;box-sizing:border-box;padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
-.ed .bar{display:flex;align-items:center;gap:8px;max-width:720px;width:100%;margin:0 auto 8px}
+.ed.sub{z-index:11}
+.ed .bar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;max-width:720px;width:100%;margin:0 auto 8px}
+.ed .bar button{padding:5px 9px;font-size:13px;white-space:nowrap}
 .ed .bar b{flex:1;font-size:16px}
 .ed textarea{flex:1;width:100%;max-width:720px;margin:0 auto;min-height:0;resize:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px;line-height:1.6}
+.ed .scroll{flex:1;width:100%;max-width:720px;margin:0 auto;overflow-y:auto}
 .thumbs{display:flex;gap:6px;flex-wrap:wrap}
 .thumbs span{font-size:12px;background:var(--bg);border-radius:6px;padding:2px 8px}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
+.trash-bar{text-align:center;margin:10px 0 20px}
+.trash-bar button{font-size:13px;color:var(--mute)}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:12;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.toast button{padding:3px 10px;font-size:13px;border-color:transparent;background:var(--acc);color:#fff}
 .help{font-size:13px;color:var(--mute);line-height:1.7;margin:0 0 12px}
 .help b{color:var(--ink)}
 .hide{display:none}
@@ -77,7 +86,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
     <label>仓库名</label><input class="f" id="c_repo" autocapitalize="off" autocomplete="off" placeholder="my-notes">
     <label>Token</label><input class="f" id="c_token" type="password" autocomplete="off">
     <label>分支</label><input class="f" id="c_branch" autocapitalize="off" autocomplete="off" placeholder="main">
-    <div class="row"><button id="c_clear">清除本机数据</button><span class="sp"></span><button id="c_cancel">取消</button><button class="pri" id="c_save">保存并连接</button></div>
+    <div class="row"><button id="c_trash">🗑 回收站</button><button id="c_clear">清除本机数据</button><span class="sp"></span><button id="c_cancel">取消</button><button class="pri" id="c_save">保存并连接</button></div>
   </div>
 
   <div id="main">
@@ -86,6 +95,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
       <div class="thumbs" id="thumbs"></div>
       <div class="row">
         <button id="attach">🖼 图片</button>
+        <button id="stamp_tog" class="on">🕒 自动时间</button>
         <input type="file" id="file" accept="image/*" multiple hidden>
         <span class="sp"></span>
         <button class="pri" id="add">保存</button>
@@ -231,18 +241,143 @@ function openBox(u,f){
   o.append(im,b,tip);o.onclick=()=>o.remove();document.body.append(o);
 }
 try{history.scrollRestoration='manual'}catch(e){}
-/* 给新加的行自动补时间：〔2026年11月23日 12:01〕 */
+
+/* ---------- 提示条（5秒撤回误删） ---------- */
+let toastEl=null,toastTimer=null;
+function showToast(msg,label,fn){
+  if(toastEl){toastEl.remove();toastEl=null}
+  clearTimeout(toastTimer);
+  const d=document.createElement('div');d.className='toast';
+  const s=document.createElement('span');s.textContent=msg;
+  const b=btn(label,()=>{d.remove();toastEl=null;clearTimeout(toastTimer);fn()});
+  d.append(s,b);document.body.append(d);toastEl=d;
+  toastTimer=setTimeout(()=>{d.remove();toastEl=null},5000);
+}
+
+/* ---------- 给新加的行自动补时间：〔2026年11月23日 12:01〕 ---------- */
 const stampRe=/〔[^〕]*〕\s*$/;
 function stampNow(){const d=new Date(),p=x=>String(x).padStart(2,'0');return '〔'+d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+p(d.getHours())+':'+p(d.getMinutes())+'〕'}
-function stampNew(oldText,newText){
+function watchMultiPaste(ta){
+  const skip=new Map();
+  ta.addEventListener('paste',e=>{
+    const txt=(e.clipboardData?.getData('text/plain')||'').replace(/\r\n?/g,'\n');
+    const lines=txt.split('\n');
+    if(lines.filter(l=>l.trim()).length<=1)return; // 单行粘贴按原逻辑走
+    const s=ta.selectionStart,val=ta.value;
+    const before=val.slice(val.lastIndexOf('\n',s-1)+1,s);
+    let last=-1;for(let i=lines.length-1;i>=0;i--)if(lines[i].trim()){last=i;break}
+    for(let i=0;i<last;i++){
+      const full=i===0?before+lines[0]:lines[i];
+      if(full.trim())skip.set(full,(skip.get(full)||0)+1);
+    }
+  });
+  return skip;
+}
+function stampNew(oldText,newText,skip){
   const cnt=new Map();for(const l of oldText.split('\n'))cnt.set(l,(cnt.get(l)||0)+1);
+  const arr=newText.split('\n');
+  const keep=arr.map(l=>{
+    if(cnt.get(l)>0){cnt.set(l,cnt.get(l)-1);return true}   // 原来就有的行，不动
+    return false;
+  });
+  // 原文里原本带时间、但被你主动删掉时间的那几行，保存时不再重新补回
+  const hadStamp=new Map();
+  cnt.forEach((n,l)=>{
+    if(n>0&&stampRe.test(l)){
+      const c=l.replace(stampRe,'').replace(/\s+$/,'');
+      hadStamp.set(c,(hadStamp.get(c)||0)+n);
+    }
+  });
   const st=stampNow();
-  return newText.split('\n').map(l=>{
-    if(cnt.get(l)>0){cnt.set(l,cnt.get(l)-1);return l}      // 原来就有的行，不动
-    if(!l.trim()||stampRe.test(l))return l;                  // 空行、或已带时间的行，不动
-    return l.replace(/\s+$/,'')+' '+st;
+  return arr.map((l,i)=>{
+    if(keep[i]||!l.trim()||stampRe.test(l))return l;         // 原行、空行、或已带时间的行，不动
+    if(skip&&skip.get(l)>0){skip.set(l,skip.get(l)-1);return l} // 一次粘贴多行里非最后一行，不加时间
+    const clean=l.replace(/\s+$/,'');
+    if(hadStamp.get(clean)>0){hadStamp.set(clean,hadStamp.get(clean)-1);return l} // 主动删掉时间的行，不补回
+    return clean+' '+st;
   }).join('\n');
 }
+function stripCursorStamps(ta){
+  const val=ta.value,a=ta.selectionStart,b=ta.selectionEnd;
+  const start=val.lastIndexOf('\n',a-1)+1;
+  let end=val.indexOf('\n',b);if(end<0)end=val.length;
+  if(b>a&&val[b-1]==='\n')end=b-1;
+  const part=val.slice(start,end).split('\n').map(l=>l.replace(/\s*〔[^〕]*〕\s*$/,'')).join('\n');
+  ta.value=val.slice(0,start)+part+val.slice(end);
+  ta.focus({preventScroll:true});
+  ta.setSelectionRange(start+part.length,start+part.length);
+}
+function makeStampTog(b,short,onChange){
+  let on=true;
+  const sync=()=>{b.textContent=on?(short?'🕒 自动':'🕒 自动时间'):(short?'🕒 关':'🕒 不加时间');b.className=on?'on':'off'};
+  b.onclick=()=>{on=!on;sync();onChange&&onChange(on)};
+  sync();
+  return{get:()=>on,reset:()=>{on=true;sync()}};
+}
+
+/* ---------- 历史版本恢复 ---------- */
+function openHistory(n,ta,base){
+  const o=document.createElement('div');o.className='ed sub';
+  const bar=document.createElement('div');bar.className='bar';
+  const title=document.createElement('b');title.textContent='历史版本';
+  const back=btn('关闭',()=>o.remove());
+  bar.append(back,title);
+  const sc=document.createElement('div');sc.className='scroll';
+  const items=[];
+  if(ta.value!==base)items.push({label:'编辑前原稿（打开此页时的内容）',text:base});
+  for(const h of (n.hist||[]))items.push({label:fmt(h.t)+' 保存前',text:h.text});
+  if(!items.length){
+    sc.innerHTML='<div class="empty">暂无历史版本<br><small>每次修改保存后，会自动保留最近 5 个旧版本</small></div>';
+  }else{
+    for(const it of items){
+      const c=document.createElement('div');c.className='note';
+      const t=document.createElement('div');t.className='txt';t.textContent=it.text||'(空)';
+      const m=document.createElement('div');m.className='meta';
+      const tm=document.createElement('span');tm.textContent=it.label;
+      const sp=document.createElement('span');sp.className='sp';
+      const use=btn('恢复到此版本',()=>{
+        ta.value=it.text;o.remove();
+        setTimeout(()=>{ta.focus({preventScroll:true});ta.setSelectionRange(ta.value.length,ta.value.length)},30);
+      });
+      use.className='pri';
+      m.append(tm,sp,use);c.append(t,m);sc.append(c);
+    }
+  }
+  o.append(bar,sc);document.body.append(o);
+}
+
+/* ---------- 回收站（恢复误删笔记） ---------- */
+function openTrash(){
+  const o=document.createElement('div');o.className='ed sub';
+  const bar=document.createElement('div');bar.className='bar';
+  const title=document.createElement('b');title.textContent='回收站';
+  const closeBtn=btn('关闭',()=>o.remove());
+  const sc=document.createElement('div');sc.className='scroll';
+  const draw=()=>{
+    sc.innerHTML='';
+    const list=Object.values(notes).filter(n=>n.deleted&&!n.purged).sort((a,b)=>(b.updated||0)-(a.updated||0));
+    if(!list.length){sc.innerHTML='<div class="empty">回收站是空的</div>';return}
+    for(const n of list){
+      const c=document.createElement('div');c.className='note';
+      const t=document.createElement('div');t.className='txt';t.textContent=n.text||(n.files?.length?'[图片笔记]':'(空)');
+      const m=document.createElement('div');m.className='meta';
+      const tm=document.createElement('span');tm.textContent='删除于 '+fmt(n.updated||n.created);
+      const sp=document.createElement('span');sp.className='sp';
+      const restore=btn('恢复',()=>{n.deleted=false;touch(n);draw()});
+      restore.className='pri';
+      const purge=btn('彻底删除',()=>{
+        if(confirm('彻底删除后将无法在回收站恢复，确定？')){
+          notes[n.id]={id:n.id,deleted:true,purged:true,updated:Date.now()};
+          persist();render();syncNow();draw();
+        }
+      });
+      m.append(tm,sp,purge,restore);c.append(t,m);sc.append(c);
+    }
+  };
+  bar.append(closeBtn,title);o.append(bar,sc);document.body.append(o);
+  draw();
+}
+
 let editorOpen=null;
 addEventListener('popstate',()=>{if(editorOpen){editorOpen.save();editorOpen.close(true)}}); // 返回键 = 自动保存并退出
 function openEditor(n){
@@ -252,7 +387,21 @@ function openEditor(n){
   const fit=()=>{o.style.height=(vv?vv.height:innerHeight)+'px';o.style.top=(vv?vv.offsetTop:0)+'px'};
   const oldOverflow=document.body.style.overflow;
   const base=n.text||'';                  // 打开编辑时的原文，用它来判断哪些行是新加的
-  const save=()=>{const v=stampNew(base,ta.value);if(v!==(n.text||'')){n.text=v;touch(n)}};   // 正式保存：新行自动加时间
+  const edSkip=watchMultiPaste(ta);
+  let autoStamp=true;
+  const save=()=>{
+    const v=autoStamp?stampNew(base,ta.value,edSkip):ta.value;
+    let changed=v!==(n.text||'');
+    if(base&&v!==base){
+      const h=Array.isArray(n.hist)?n.hist.slice():[];
+      if(!h.length||h[0].text!==base){
+        h.unshift({t:Date.now(),text:base});
+        if(h.length>5)h.length=5;
+        n.hist=h;changed=true;
+      }
+    }
+    if(changed){n.text=v;touch(n)}
+  };
   const draft=()=>{if(ta.value!==(n.text||'')){n.text=ta.value;touch(n)}};                    // 切到别的 App：只存草稿，不加时间
   // 关闭编辑页；back=true 表示由手机返回键触发（历史记录已经退了一格）
   const close=(byBack)=>{
@@ -264,7 +413,11 @@ function openEditor(n){
   };
   const onHide=()=>{if(document.hidden)draft()}; // 切到别的 App 也自动保存
   const bar=document.createElement('div');bar.className='bar';
-  const title=document.createElement('b');title.textContent='编辑笔记';
+  const sp=document.createElement('span');sp.className='sp';
+  const togBtn=document.createElement('button');
+  makeStampTog(togBtn,true,v=>{autoStamp=v});
+  const stripBtn=btn('去时间',()=>stripCursorStamps(ta));
+  const histBtn=btn('历史',()=>openHistory(n,ta,base));
   const cancel=btn('取消',()=>{
     if(ta.value!==base&&!confirm('放弃修改？'))return;
     if((n.text||'')!==base){n.text=base;touch(n)}   // 若之前已存过草稿，恢复原文
@@ -275,7 +428,7 @@ function openEditor(n){
   editorOpen={save,close};
   history.pushState({ed:1},'');           // 让手机返回键先退出编辑页，而不是退出网页
   document.addEventListener('visibilitychange',onHide);
-  bar.append(cancel,title,ok);o.append(bar,ta);document.body.append(o);
+  bar.append(cancel,togBtn,stripBtn,histBtn,sp,ok);o.append(bar,ta);document.body.append(o);
   document.body.style.overflow='hidden';fit();
   if(vv){vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit)}
   setTimeout(()=>{ta.focus({preventScroll:true});ta.setSelectionRange(ta.value.length,ta.value.length)},60);
@@ -284,6 +437,8 @@ function renderThumbs(){
   $('#thumbs').innerHTML='';
   pending.forEach((a,i)=>{const s=document.createElement('span');s.textContent='🖼 '+a.name+' ✕';s.onclick=()=>{pending.splice(i,1);renderThumbs()};$('#thumbs').append(s)});
 }
+const inpSkip=watchMultiPaste($('#inp'));
+const inpStamp=makeStampTog($('#stamp_tog'),false);
 $('#attach').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{addImages([...e.target.files]);e.target.value=''};
 $('#inp').addEventListener('paste',e=>{
@@ -294,7 +449,9 @@ $('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaK
 
 /* ---------- 增删改 ---------- */
 function add(){
-  const text=stampNew('',$('#inp').value.trim()); // 新建：每一行都自动带时间
+  const raw=$('#inp').value.trim();
+  const text=inpStamp.get()?stampNew('',raw,inpSkip):raw;
+  inpSkip.clear();inpStamp.reset();
   if(!text&&!pending.length)return;
   touch({id:uid(),text,files:pending,pinned:false,deleted:false,created:Date.now()});
   $('#inp').value='';pending=[];renderThumbs();
@@ -322,49 +479,59 @@ function btn(label,fn){const b=document.createElement('button');b.textContent=la
 function render(){
   const y=window.scrollY; // 重绘列表会让页面瞬间变短导致跳回顶部，先记住位置，画完再恢复
   const q=$('#q').value.trim().toLowerCase();
-  const list=Object.values(notes).filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
+  const all=Object.values(notes);
+  const trashCount=all.filter(n=>n.deleted&&!n.purged).length;
+  const list=all.filter(n=>!n.deleted&&(!q||(n.text||'').toLowerCase().includes(q)))
     .sort((a,b)=>(b.pinned-a.pinned)||(b.created-a.created));
   const box=$('#list');box.innerHTML='';
-  if(!list.length){box.innerHTML='<div class="empty">'+(q?'没有找到':'还没有记录')+'</div>';return}
-  for(const n of list){
-    const c=document.createElement('div');c.className='note'+(n.pinned?' pin':'');
-    if(editing===n.id){
-      const ta=document.createElement('textarea');ta.value=n.text||'';ta.style.minHeight='100px';
-      const row=document.createElement('div');row.className='row';
-      row.append(btn('取消',()=>{editing=null;render()}),
-        Object.assign(btn('保存',()=>{editing=null;n.text=ta.value;touch(n)}),{className:'pri'}));
-      c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
-    }
-    const t=document.createElement('div');t.className='txt clamp';linkify(t,n.text||'');c.append(t);
-    if(n.files?.length){
-      const g=document.createElement('div');g.className='imgs';
-      for(const f of n.files){
-        const w=document.createElement('div');w.className='pic';
-        const im=document.createElement('img');im.loading='lazy';
-        w.append(im,btn('💾 保存到手机',()=>savePic(f)));g.append(w);
-        imgUrl(f.file).then(u=>{im.src=u;im.onclick=()=>openBox(u,f)}).catch(()=>{im.alt='图片加载失败'});
+  if(!list.length){
+    box.innerHTML='<div class="empty">'+(q?'没有找到':'还没有记录')+'</div>';
+  }else{
+    for(const n of list){
+      const c=document.createElement('div');c.className='note'+(n.pinned?' pin':'');
+      if(editing===n.id){
+        const ta=document.createElement('textarea');ta.value=n.text||'';ta.style.minHeight='100px';
+        const row=document.createElement('div');row.className='row';
+        row.append(btn('取消',()=>{editing=null;render()}),
+          Object.assign(btn('保存',()=>{editing=null;n.text=ta.value;touch(n)}),{className:'pri'}));
+        c.append(ta,row);box.append(c);setTimeout(()=>ta.focus(),0);continue;
       }
-      c.append(g);
+      const t=document.createElement('div');t.className='txt clamp';linkify(t,n.text||'');c.append(t);
+      if(n.files?.length){
+        const g=document.createElement('div');g.className='imgs';
+        for(const f of n.files){
+          const w=document.createElement('div');w.className='pic';
+          const im=document.createElement('img');im.loading='lazy';
+          w.append(im,btn('💾 保存到手机',()=>savePic(f)));g.append(w);
+          imgUrl(f.file).then(u=>{im.src=u;im.onclick=()=>openBox(u,f)}).catch(()=>{im.alt='图片加载失败'});
+        }
+        c.append(g);
+      }
+      const m=document.createElement('div');m.className='meta';
+      const tm=document.createElement('span');tm.textContent=(n.pinned?'📌 ':'')+fmt(n.created);
+      const sp=document.createElement('span');sp.style.flex='1';
+      m.append(tm,sp,
+        btn('复制',()=>navigator.clipboard?.writeText(n.text||'')),
+        btn(n.pinned?'取消置顶':'置顶',()=>{n.pinned=!n.pinned;touch(n)}),
+        btn('编辑',()=>openEditor(n)),
+        btn('删除',()=>{if(confirm('删除这条？')){n.deleted=true;touch(n);showToast('已移入回收站','撤销',()=>{n.deleted=false;touch(n)})}}));
+      c.append(m);box.append(c);
+      // 折叠：内容超出 6 行才出现展开/收起按钮
+      if(t.scrollHeight>t.clientHeight+2){
+        const open=openSet.has(n.id);if(open)t.classList.remove('clamp');
+        const tg=btn(open?'收起':'展开',()=>{
+          const o=t.classList.toggle('clamp');
+          o?openSet.delete(n.id):openSet.add(n.id);
+          tg.textContent=o?'展开':'收起';
+        });
+        m.insertBefore(tg,sp.nextSibling);
+      }else t.classList.remove('clamp');
     }
-    const m=document.createElement('div');m.className='meta';
-    const tm=document.createElement('span');tm.textContent=(n.pinned?'📌 ':'')+fmt(n.created);
-    const sp=document.createElement('span');sp.style.flex='1';
-    m.append(tm,sp,
-      btn('复制',()=>navigator.clipboard?.writeText(n.text||'')),
-      btn(n.pinned?'取消置顶':'置顶',()=>{n.pinned=!n.pinned;touch(n)}),
-      btn('编辑',()=>openEditor(n)),
-      btn('删除',()=>{if(confirm('删除这条？')){n.deleted=true;touch(n)}}));
-    c.append(m);box.append(c);
-    // 折叠：内容超出 6 行才出现展开/收起按钮
-    if(t.scrollHeight>t.clientHeight+2){
-      const open=openSet.has(n.id);if(open)t.classList.remove('clamp');
-      const tg=btn(open?'收起':'展开',()=>{
-        const o=t.classList.toggle('clamp');
-        o?openSet.delete(n.id):openSet.add(n.id);
-        tg.textContent=o?'展开':'收起';
-      });
-      m.insertBefore(tg,sp.nextSibling);
-    }else t.classList.remove('clamp');
+  }
+  if(!q&&trashCount>0){
+    const tb=document.createElement('div');tb.className='trash-bar';
+    tb.append(btn('🗑 回收站 ('+trashCount+')',openTrash));
+    box.append(tb);
   }
   window.scrollTo(0,y);
 }
@@ -379,6 +546,7 @@ function showSetup(on){
   }
 }
 $('#gear').onclick=()=>showSetup(true);
+$('#c_trash').onclick=()=>{showSetup(false);openTrash()};
 $('#c_cancel').onclick=()=>showSetup(!cfg);
 $('#c_clear').onclick=()=>{
   if(confirm('清除本机保存的设置和笔记缓存？（仓库里的笔记不受影响）')){
