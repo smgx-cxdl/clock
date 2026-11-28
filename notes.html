@@ -263,17 +263,45 @@ const stampRe=/〔[^〕]*〕\s*$/;
 function stampNow(){const d=new Date(),p=x=>String(x).padStart(2,'0');return '〔'+d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+p(d.getHours())+':'+p(d.getMinutes())+'〕'}
 function watchMultiPaste(ta){
   const skip=new Map();
-  ta.addEventListener('paste',e=>{
-    const txt=(e.clipboardData?.getData('text/plain')||'').replace(/\r\n?/g,'\n');
-    const lines=txt.split('\n');
+  let prevVal=ta.value,isComposing=false,skipInput=false;
+  const record=(txt,pos,val)=>{
+    const lines=txt.replace(/\r\n?|[\u2028\u2029\u0085]/g,'\n').split('\n');
     if(lines.filter(l=>l.trim()).length<=1)return; // 单行粘贴按原逻辑走
-    const s=ta.selectionStart,val=ta.value;
-    const before=val.slice(val.lastIndexOf('\n',s-1)+1,s);
+    const before=val.slice(val.lastIndexOf('\n',pos-1)+1,pos);
     let last=-1;for(let i=lines.length-1;i>=0;i--)if(lines[i].trim()){last=i;break}
     for(let i=0;i<last;i++){
-      const full=i===0?before+lines[0]:lines[i];
-      if(full.trim())skip.set(full,(skip.get(full)||0)+1);
+      if(i===0&&!lines[0].trim())continue; // 粘贴内容以换行开头时，不误伤光标前已输入的内容
+      const full=(i===0?before+lines[0]:lines[i]).trim();
+      if(full)skip.set(full,(skip.get(full)||0)+1);
     }
+  };
+  const checkDiff=()=>{
+    const newVal=ta.value;
+    if(newVal===prevVal)return;
+    if(!newVal){skip.clear();prevVal='';return}
+    let p=0;while(p<prevVal.length&&p<newVal.length&&prevVal[p]===newVal[p])p++;
+    let qOld=prevVal.length,qNew=newVal.length;
+    while(qOld>p&&qNew>p&&prevVal[qOld-1]===newVal[qNew-1]){qOld--;qNew--}
+    const inserted=newVal.slice(p,qNew);
+    if(/[\r\n\u2028\u2029\u0085]/.test(inserted))record(inserted,p,prevVal);
+    prevVal=newVal;
+  };
+  ta.addEventListener('focus',()=>{prevVal=ta.value});
+  ta.addEventListener('keyup',()=>{if(!isComposing)prevVal=ta.value});
+  ta.addEventListener('paste',e=>{
+    const txt=e.clipboardData?.getData('text/plain')||'';
+    if(txt.replace(/\r\n?|[\u2028\u2029\u0085]/g,'\n').split('\n').filter(l=>l.trim()).length<=1)return;
+    record(txt,ta.selectionStart,ta.value);
+    skipInput=true;
+    setTimeout(()=>{skipInput=false},0);
+  });
+  ta.addEventListener('beforeinput',e=>{if(!isComposing&&!e.isComposing)prevVal=ta.value});
+  ta.addEventListener('compositionstart',()=>{isComposing=true;prevVal=ta.value});
+  ta.addEventListener('compositionend',()=>{isComposing=false;if(skipInput){skipInput=false;prevVal=ta.value;return}checkDiff()});
+  ta.addEventListener('input',e=>{
+    if(skipInput){skipInput=false;prevVal=ta.value;return}
+    if(isComposing||e.isComposing)return;
+    checkDiff();
   });
   return skip;
 }
@@ -295,7 +323,8 @@ function stampNew(oldText,newText,skip){
   const st=stampNow();
   return arr.map((l,i)=>{
     if(keep[i]||!l.trim()||stampRe.test(l))return l;         // 原行、空行、或已带时间的行，不动
-    if(skip&&skip.get(l)>0){skip.set(l,skip.get(l)-1);return l} // 一次粘贴多行里非最后一行，不加时间
+    const t=l.trim();
+    if(skip&&skip.get(t)>0){skip.set(t,skip.get(t)-1);return l} // 一次粘贴多行里非最后一行，不加时间
     const clean=l.replace(/\s+$/,'');
     if(hadStamp.get(clean)>0){hadStamp.set(clean,hadStamp.get(clean)-1);return l} // 主动删掉时间的行，不补回
     return clean+' '+st;
