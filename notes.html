@@ -25,12 +25,12 @@ textarea,input.f{width:100%;border:0;outline:0;resize:vertical;background:transp
 textarea{min-height:84px}
 input.f{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:4px 0 10px}
 label{font-size:13px;color:var(--mute)}
-.row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.row{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
 button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
 button.pri{background:var(--mute);border-color:var(--mute);color:#fff}
 button.on{border-color:var(--acc);color:var(--acc)}
 button.off{color:var(--mute)}
-#attach,#stamp_tog{padding:2px 7px;font-size:12px}
+#attach,#stamp_tog,#inp_exp{padding:2px 7px;font-size:12px}
 #clr,#add{padding:3px 10px;font-size:12px}
 .ico,button,.thumbs span,.meta span{filter:grayscale(1)}
 .sp{flex:1}
@@ -103,6 +103,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
         <button id="stamp_tog" class="on">🕒 自动时间</button>
         <input type="file" id="file" accept="image/*" multiple hidden>
         <span class="sp"></span>
+        <button id="inp_exp" class="hide">展开</button>
         <button id="clr">取消</button>
         <button class="pri" id="add">保存</button>
       </div>
@@ -502,29 +503,60 @@ function renderThumbs(){
   $('#thumbs').innerHTML='';
   pending.forEach((a,i)=>{const s=document.createElement('span');s.textContent='🖼 '+a.name+' ✕';s.onclick=()=>{pending.splice(i,1);renderThumbs()};$('#thumbs').append(s)});
 }
-const inpSkip=watchMultiPaste($('#inp'));
+const inp=$('#inp'),inpExp=$('#inp_exp');
+let inpOpen=false;
+function syncInpExp(){
+  if(inpOpen){
+    const sy=window.scrollY;
+    inp.style.height='auto';
+    const sh=inp.scrollHeight;
+    if(!inp.value||sh<=86){
+      inpOpen=false;
+      inp.style.height='';
+      inpExp.classList.add('hide');
+    }else{
+      inp.style.height=sh+'px';
+      inpExp.textContent='收起';
+      inpExp.classList.remove('hide');
+    }
+    if(window.scrollY!==sy)window.scrollTo(0,sy);
+  }else{
+    inp.style.height='';
+    const over=!!inp.value&&inp.scrollHeight>inp.clientHeight+2;
+    inpExp.textContent='展开';
+    inpExp.classList.toggle('hide',!over);
+  }
+}
+inpExp.onclick=()=>{inpOpen=!inpOpen;syncInpExp()};
+inp.addEventListener('input',syncInpExp);
+inp.addEventListener('compositionend',syncInpExp);
+window.addEventListener('resize',syncInpExp);
+
+const inpSkip=watchMultiPaste(inp);
 const inpStamp=makeStampTog($('#stamp_tog'),false);
 $('#attach').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{addImages([...e.target.files]);e.target.value=''};
-$('#inp').addEventListener('paste',e=>{
+inp.addEventListener('paste',e=>{
   const fs=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/'));
   if(fs.length){e.preventDefault();addImages(fs)}
 });
-$('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))add()});
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))add()});
 
 /* ---------- 增删改 ---------- */
 function add(){
-  const raw=$('#inp').value.trim();
+  const raw=inp.value.trim();
   const text=inpStamp.get()?stampNew('',raw,inpSkip):raw;
   inpSkip.clear();inpStamp.reset();
   if(!text&&!pending.length)return;
   touch({id:uid(),text,files:pending,pinned:false,deleted:false,created:Date.now()});
-  $('#inp').value='';pending=[];renderThumbs();
+  inp.value='';pending=[];renderThumbs();
+  inpOpen=false;syncInpExp();
 }
 $('#add').onclick=add;
 $('#clr').onclick=()=>{
-  $('#inp').value='';pending=[];renderThumbs();
+  inp.value='';pending=[];renderThumbs();
   inpSkip.clear();inpStamp.reset();
+  inpOpen=false;syncInpExp();
 };
 const qBox=$('#q'),qX=$('#qx');
 qBox.oninput=()=>{qX.classList.toggle('hide',!qBox.value);render()};
@@ -611,7 +643,7 @@ function showSetup(on){
   if(on){
     $('#c_owner').value=cfg?.owner||'';$('#c_repo').value=cfg?.repo||'';
     $('#c_token').value=cfg?.token||'';$('#c_branch').value=cfg?.branch||'main';
-  }
+  }else syncInpExp();
 }
 $('#gear').onclick=()=>showSetup(true);
 $('#c_cancel').onclick=()=>showSetup(!cfg);
