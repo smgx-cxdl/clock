@@ -31,6 +31,7 @@ button.pri{background:var(--mute);border-color:var(--mute);color:#fff}
 button.on{border-color:var(--acc);color:var(--acc)}
 button.off{color:var(--mute)}
 #attach,#stamp_tog{padding:2px 7px;font-size:12px}
+#clr,#add{padding:3px 10px;font-size:12px}
 .ico,button,.thumbs span,.meta span{filter:grayscale(1)}
 .sp{flex:1}
 input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;outline:0}
@@ -102,6 +103,7 @@ input.search{width:100%;margin:12px 0;padding:9px 12px;border:1px solid var(--li
         <button id="stamp_tog" class="on">🕒 自动时间</button>
         <input type="file" id="file" accept="image/*" multiple hidden>
         <span class="sp"></span>
+        <button id="clr">取消</button>
         <button class="pri" id="add">保存</button>
       </div>
     </div>
@@ -246,16 +248,35 @@ function openBox(u,f){
 }
 try{history.scrollRestoration='manual'}catch(e){}
 
-/* ---------- 提示条（5秒撤回误删） ---------- */
+/* ---------- 提示条（5秒撤回误删 / 复制提示） ---------- */
 let toastEl=null,toastTimer=null;
-function showToast(msg,label,fn){
+function showToast(msg,label,fn,ms=5000){
   if(toastEl){toastEl.remove();toastEl=null}
   clearTimeout(toastTimer);
   const d=document.createElement('div');d.className='toast';
   const s=document.createElement('span');s.textContent=msg;
-  const b=btn(label,()=>{d.remove();toastEl=null;clearTimeout(toastTimer);fn()});
-  d.append(s,b);document.body.append(d);toastEl=d;
-  toastTimer=setTimeout(()=>{d.remove();toastEl=null},5000);
+  d.append(s);
+  if(label){
+    const b=btn(label,()=>{d.remove();toastEl=null;clearTimeout(toastTimer);fn&&fn()});
+    d.append(b);
+  }
+  document.body.append(d);toastEl=d;
+  toastTimer=setTimeout(()=>{d.remove();toastEl=null},ms);
+}
+async function copyText(text){
+  try{
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text);
+    else throw 0;
+  }catch(e){
+    const t=document.createElement('textarea');
+    t.value=text;t.style.cssText='position:fixed;opacity:0';
+    document.body.append(t);t.select();
+    let ok=false;try{ok=document.execCommand('copy')}catch(_){}
+    t.remove();
+    if(!ok){showToast('复制失败，请手动复制',null,null,2500);return false}
+  }
+  showToast('已复制到剪贴板',null,null,2000);
+  return true;
 }
 
 /* ---------- 给新加的行自动补时间：〔2026年11月23日 12:01〕 ---------- */
@@ -501,6 +522,10 @@ function add(){
   $('#inp').value='';pending=[];renderThumbs();
 }
 $('#add').onclick=add;
+$('#clr').onclick=()=>{
+  $('#inp').value='';pending=[];renderThumbs();
+  inpSkip.clear();inpStamp.reset();
+};
 const qBox=$('#q'),qX=$('#qx');
 qBox.oninput=()=>{qX.classList.toggle('hide',!qBox.value);render()};
 qX.onclick=()=>{qBox.value='';qX.classList.add('hide');render()};            // ✕ 一键清空搜索
@@ -553,7 +578,13 @@ function render(){
       const tm=document.createElement('span');tm.textContent=(n.pinned?'📌 ':'')+fmt(n.created);
       const sp=document.createElement('span');sp.style.flex='1';
       m.append(tm,sp,
-        btn('复制',()=>navigator.clipboard?.writeText(n.text||'')),
+        btn('复制',async e=>{
+          const b=e.currentTarget;
+          if(await copyText(n.text||'')){
+            b.textContent='已复制';
+            setTimeout(()=>{if(b.isConnected)b.textContent='复制'},1500);
+          }
+        }),
         btn(n.pinned?'取消置顶':'置顶',()=>{n.pinned=!n.pinned;touch(n)}),
         btn('编辑',()=>openEditor(n)),
         btn('删除',()=>{if(confirm('删除这条？')){n.deleted=true;touch(n);showToast('已移入回收站','撤销',()=>{n.deleted=false;touch(n)})}}));
